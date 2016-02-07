@@ -268,7 +268,7 @@ class Parser {
 	public function isImage($url = '') {
 		$mime = $this->getContentType($url);
 		if ($mime) {
-			list($simple, ) = explode('/', $mime);
+			list($simple,) = explode('/', $mime);
 			return ($simple == 'image');
 		}
 
@@ -334,7 +334,7 @@ class Parser {
 	public function parseTitle(DOMDocument $doc) {
 		$node = $doc->getElementsByTagName('title');
 		$title = $node->item(0)->nodeValue;
-		return ($title) ? : '';
+		return ($title) ?: '';
 	}
 
 	/**
@@ -495,7 +495,7 @@ class Parser {
 			return $href;
 		}
 
-		$uri = trim($doc->documentURI ? : '', '/');
+		$uri = trim($doc->documentURI ?: '', '/');
 
 		// Check if $url is relative to root
 		if (substr($href, 0, 1) === "/") {
