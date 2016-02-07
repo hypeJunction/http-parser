@@ -2,6 +2,7 @@ HTTP Parser
 ===========
 [![Code Coverage](https://scrutinizer-ci.com/g/hypeJunction/http-parser/badges/coverage.png?b=master)](https://scrutinizer-ci.com/g/hypeJunction/http-parser/?branch=master)
 [![Scrutinizer Code Quality](https://scrutinizer-ci.com/g/hypeJunction/http-parser/badges/quality-score.png?b=master)](https://scrutinizer-ci.com/g/hypeJunction/http-parser/?branch=master)
+[![Build Status](https://scrutinizer-ci.com/g/hypeJunction/http-parser/badges/build.png?b=master)](https://scrutinizer-ci.com/g/hypeJunction/http-parser/build-status/master)
 
 Parses HTTP resources into serializable arrays of oEmbed-like metatags
 
