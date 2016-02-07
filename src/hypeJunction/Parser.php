@@ -20,7 +20,7 @@ class Parser {
 	/**
 	 * @var array
 	 */
-	static $cache;
+	private static $cache;
 
 	/**
 	 * Constructor
