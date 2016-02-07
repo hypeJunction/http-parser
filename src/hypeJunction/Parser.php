@@ -106,6 +106,7 @@ class Parser {
 			return $meta;
 		}
 
+		$data = new \stdClass();
 		if ($this->isJSON($url)) {
 			$data = @json_decode($content);
 		} else if ($this->isXML($url)) {
