@@ -1,0 +1,31 @@
+filter:
+    excluded_paths:
+        - 'vendor/*'
+        - 'tests/*'
+
+tools:
+    php_mess_detector:
+        filter:
+            excluded_paths: ['vendor/*','tests/*']
+    sensiolabs_security_checker: true
+    php_pdepend:
+        excluded_dirs:
+            - vendors
+            - vendor
+    php_hhvm: true
+    php_sim: true
+    php_code_sniffer: true
+
+checks:
+    php:
+        code_rating: true
+        duplication: true
+
+build:
+    tests:
+        override:
+            -
+                command: 'phpunit --coverage-clover=clover'
+                coverage:
+                    file: 'clover'
+                    format: 'php-clover'
