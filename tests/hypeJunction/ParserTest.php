@@ -236,7 +236,7 @@ class ParserTest extends PHPUnit_Framework_TestCase {
 	 * @covers hypeJunction\Parser::getDOM
 	 */
 	public function testGetDOM() {
-		$this->assertInstanceOf(\DOMDocument::class, $this->mock()->getDOM($this->url()));
+		$this->assertFalse($this->mock()->getDOM($this->url()));
 
 		$url = $this->url();
 		$dom = $this->mock('html')->getDOM($url);

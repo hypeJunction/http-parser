@@ -150,6 +150,10 @@ class Parser {
 		}
 
 		$doc = $this->getDOM($url);
+		if (!$doc) {
+			return false;
+		}
+		
 		$defaults = array(
 			'url' => $url,
 		);
@@ -306,10 +310,13 @@ class Parser {
 	 * Returns HTML contents of the page as a DOMDocument
 	 *
 	 * @param string $url URL of the resource
-	 * @return DOMDocument
+	 * @return DOMDocument|false
 	 */
 	public function getDOM($url = '') {
 		$html = $this->getHTML($url);
+		if (empty($html)) {
+			return false;
+		}
 		$doc = new DOMDocument();
 		$doc->loadHTML($html);
 		if (!$doc->documentURI) {
