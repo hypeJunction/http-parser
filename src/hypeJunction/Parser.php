@@ -108,9 +108,9 @@ class Parser {
 
 		$data = new \stdClass();
 		if ($this->isJSON($url)) {
-			$data = @json_decode($content);
+			$data = json_decode($content);
 		} else if ($this->isXML($url)) {
-			$data = @simplexml_load_string($content);
+			$data = simplexml_load_string($content);
 		}
 
 		$props = array(
@@ -311,7 +311,7 @@ class Parser {
 	public function getDOM($url = '') {
 		$html = $this->getHTML($url);
 		$doc = new DOMDocument();
-		@$doc->loadHTML($html);
+		$doc->loadHTML($html);
 		if (!$doc->documentURI) {
 			$doc->documentURI = $url;
 		}
