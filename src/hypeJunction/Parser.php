@@ -318,7 +318,11 @@ class Parser {
 			return false;
 		}
 		$doc = new DOMDocument();
-		$doc->loadHTML($html);
+		if (is_callable('mb_convert_encoding')) {
+			$doc->loadHTML(mb_convert_encoding($html, 'HTML-ENTITIES', 'UTF-8'));
+		} else {
+			$doc->loadHTML($html);
+		}
 		if (!$doc->documentURI) {
 			$doc->documentURI = $url;
 		}
