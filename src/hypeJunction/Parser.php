@@ -490,9 +490,14 @@ class Parser {
 	 *
 	 * @param DOMDocument $doc  Document
 	 * @param string      $href URL to normalize
-	 * @return string
+	 * @return string|false
 	 */
 	public function getAbsoluteURL(DOMDocument $doc, $href = '') {
+
+		if (preg_match("/^data:/i", $href)) {
+			// data URIs can not be resolved
+			return false;
+		}
 
 		// Check if $url is absolute
 		if (parse_url($href, PHP_URL_HOST)) {
