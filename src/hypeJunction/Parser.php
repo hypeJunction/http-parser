@@ -514,6 +514,7 @@ class Parser {
 		}
 
 		// $url is relative to page
+		$uri = pathinfo($uri, PATHINFO_DIRNAME);
 		return "$uri/$href";
 	}
 
