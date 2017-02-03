@@ -1,6 +1,6 @@
 {
 	"name": "hypejunction/http-parser",
-	"version": "0.0.0",
+	"version": "0.0.1",
 	"description": "A tool for scraping URL resources",
 	"homepage": "http://hypejunction.com",
 	"keywords": [
