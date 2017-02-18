@@ -55,7 +55,7 @@ class Parser {
 				}
 			}
 		}
-	
+
 		if (!is_array($data)) {
 			$data = array();
 		}
@@ -153,7 +153,7 @@ class Parser {
 		if (!$doc) {
 			return false;
 		}
-		
+
 		$defaults = array(
 			'url' => $url,
 		);
@@ -163,7 +163,7 @@ class Parser {
 		$img_tags = $this->parseImgTags($doc);
 
 		$meta = array_merge_recursive($defaults, $link_tags, $meta_tags, $img_tags);
-		
+
 		if (empty($meta['title'])) {
 			$meta['title'] = $this->parseTitle($doc);
 		}
@@ -187,13 +187,42 @@ class Parser {
 	}
 
 	/**
+	 * Validate URL
+	 * 
+	 * @param string $url URL to validate
+	 * @return bool
+	 */
+	public function isValidUrl($url = '') {
+		// based on http://php.net/manual/en/function.filter-var.php#104160
+		// adapted by @mrclay in https://github.com/mrclay/Elgg-leaf/blob/62bf31c0ccdaab549a7e585a4412443e09821db3/engine/lib/output.php
+		$res = filter_var($url, FILTER_VALIDATE_URL);
+		if ($res) {
+			return $res;
+		}
+		// Check if it has unicode chars.
+		$l = elgg_strlen($url);
+		if (strlen($url) == $l) {
+			return $res;
+		}
+		// Replace wide chars by “X”.
+		$s = '';
+		for ($i = 0; $i < $l; ++$i) {
+			$ch = elgg_substr($url, $i, 1);
+			$s .= (strlen($ch) > 1) ? 'X' : $ch;
+		}
+		// Re-check now.
+		return filter_var($s, FILTER_VALIDATE_URL) ? $url : false;
+	}
+
+	/**
 	 * Returns head of the resource
 	 *
 	 * @param string $url URL of the resource
 	 * @return Response|false
 	 */
 	public function request($url = '') {
-		if (!filter_var($url, FILTER_VALIDATE_URL)) {
+		$url = str_replace(' ', '%20', $url);
+		if (!$this->isValidUrl($url)) {
 			return false;
 		}
 		if (!isset(self::$cache[$url])) {
@@ -268,7 +297,7 @@ class Parser {
 	public function isImage($url = '') {
 		$mime = $this->getContentType($url);
 		if ($mime) {
-			list($simple,) = explode('/', $mime);
+			list($simple, ) = explode('/', $mime);
 			return ($simple == 'image');
 		}
 
