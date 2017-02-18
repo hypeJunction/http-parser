@@ -1,3 +1,14 @@
+<a name="0.0.2"></a>
+## [0.0.2](https://github.com/hypeJunction/http-parser/compare/0.0.1...v0.0.2) (2017-02-18)
+
+
+### Bug Fixes
+
+* **parser:** ensure that icon and thumbnail URLs point to valid image resources ([84f6136](https://github.com/hypeJunction/http-parser/commit/84f6136))
+* **parser:** URLs containing multi-byte characters can now be parsed ([ac9f1e2](https://github.com/hypeJunction/http-parser/commit/ac9f1e2))
+
+
+
 <a name="0.0.1"></a>
 ## 0.0.1 (2017-02-03)
 
