@@ -359,7 +359,10 @@ class Parser {
 			switch ($rel) {
 
 				case 'icon' :
-					$meta['icons'][] = $this->getAbsoluteURL($doc, $href);
+					$image_url = $this->getAbsoluteURL($doc, $href);
+					if ($this->isImage($image_url)) {
+						$meta['icons'][] = $image_url;
+					}
 					break;
 
 				case 'canonical' :
@@ -457,7 +460,10 @@ class Parser {
 
 					case 'og:image' :
 					case 'twitter:image' :
-						$meta['thumbnails'][] = $this->getAbsoluteURL($doc, $content);
+						$image_url = $this->getAbsoluteURL($doc, $content);
+						if ($this->isImage($image_url)) {
+							$meta['thumbnails'][] = $image_url;
+						}
 						break;
 				}
 			}
@@ -479,7 +485,10 @@ class Parser {
 		$nodes = $doc->getElementsByTagName('img');
 		foreach ($nodes as $node) {
 			$src = $node->getAttribute('src');
-			$meta['thumbnails'][] = $this->getAbsoluteURL($doc, $src);
+			$image_url = $this->getAbsoluteURL($doc, $src);
+			if ($this->isImage($image_url)) {
+				$meta['thumbnails'][] = $image_url;
+			}
 		}
 
 		return $meta;
