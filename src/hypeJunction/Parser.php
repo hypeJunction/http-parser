@@ -347,6 +347,9 @@ class Parser {
 			return false;
 		}
 		$doc = new DOMDocument();
+		
+		libxml_use_internal_errors(true);
+		
 		if (is_callable('mb_convert_encoding')) {
 			$doc->loadHTML(mb_convert_encoding($html, 'HTML-ENTITIES', 'UTF-8'));
 		} else {
@@ -355,6 +358,9 @@ class Parser {
 		if (!$doc->documentURI) {
 			$doc->documentURI = $url;
 		}
+		
+		libxml_clear_errors();
+		
 		return $doc;
 	}
 
