@@ -384,7 +384,10 @@ class Parser {
 	 */
 	public function parseLinkTags(DOMDocument $doc) {
 
-		$meta = array();
+		$meta = array(
+			'icons' => [],
+			'thumbnails' => [],
+		);
 
 		$nodes = $doc->getElementsByTagName('link');
 		foreach ($nodes as $node) {
@@ -515,7 +518,9 @@ class Parser {
 	 */
 	public function parseImgTags(DOMDocument $doc) {
 
-		$meta = array();
+		$meta = array(
+			'thumbnails' => [],
+		);
 
 		$nodes = $doc->getElementsByTagName('img');
 		foreach ($nodes as $node) {
