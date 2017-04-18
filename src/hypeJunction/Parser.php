@@ -200,7 +200,7 @@ class Parser {
 			return $res;
 		}
 		// Check if it has unicode chars.
-		$l = elgg_strlen($url);
+		$l = mb_strlen($url);
 		if (strlen($url) == $l) {
 			return $res;
 		}
