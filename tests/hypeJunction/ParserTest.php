@@ -23,16 +23,18 @@ class ParserTest extends PHPUnit_Framework_TestCase {
 	protected $url;
 
 	/**
+	 * @var string
+	 */
+	protected $test_file_path;
+
+	/**
 	 * Sets up the fixture, for example, opens a network connection.
 	 * This method is called before a test is executed.
 	 */
 	protected function setUp() {
-		$this->url = 'http://foo.bar.com/';
+		$this->url = 'http://localhost/';
 		$test_files = dirname(dirname(__FILE__)) . '/test-files/';
-		$this->html = file_get_contents($test_files . '/ogp.html');
-		$this->xml = file_get_contents($test_files . '/oembed.xml');
-		$this->json = file_get_contents($test_files . '/oembed.json');
-		$this->jpeg = '';
+		$this->test_file_path = $test_files;
 	}
 
 	/**
@@ -43,39 +45,85 @@ class ParserTest extends PHPUnit_Framework_TestCase {
 
 	}
 
+	protected function loadHTML() {
+		return file_get_contents($this->test_file_path . '/ogp.html');
+	}
+
+	protected function loadXML() {
+		return file_get_contents($this->test_file_path . '/oembed.xml');
+	}
+
+	protected function loadJSON() {
+		return file_get_contents($this->test_file_path . '/oembed.json');
+	}
+
+	protected function loadJPG() {
+		return file_get_contents($this->test_file_path . '/w3c_home.jpg');
+	}
+
+	protected function loadICO() {
+		return file_get_contents($this->test_file_path . '/favicon.ico');
+	}
+
 	protected function mock($type = '') {
 
 		switch ($type) {
 			default :
-				$response = new Response(404);
+				$responses = [
+					new Response(404),
+				];
 				break;
 			case 'html' :
-				$response = new Response(200, [
-					'Content-Type' => 'text/html; charset=UTF-8',
-					'Content-Length' => strlen($this->html),
-						], $this->html);
+				$html = $this->loadHTML();
+				$responses = [
+					new Response(200, [
+						'Content-Type' => 'text/html; charset=UTF-8',
+						'Content-Length' => mb_strlen($html),
+							], $html),
+					new Response(200, [
+						'Content-Type' => 'image/x-icon',
+							]),
+					new Response(200, [
+						'Content-Type' => 'image/x-icon',
+							]),
+					new Response(200, [
+						'Content-Type' => 'image/png',
+							]),
+					new Response(200, [
+						'Content-Type' => 'application/xml+oembed',
+							]),
+				];
 				break;
+
 			case 'xml' :
-				$response = new Response(200, [
-					'Content-Type' => 'application/xml+oembed; charset=UTF-8',
-					'Content-Length' => strlen($this->xml),
-						], $this->xml);
+				$responses = [
+					new Response(200, [
+						'Content-Type' => 'application/xml+oembed; charset=UTF-8',
+						'Content-Length' => mb_strlen($this->loadXML()),
+							], $this->loadXML()),
+				];
 				break;
 			case 'json' :
-				$response = new Response(200, [
-					'Content-Type' => 'application/json+oembed; charset=UTF-8',
-					'Content-Length' => strlen($this->json),
-						], $this->json);
+				$json = $this->loadJSON();
+				$responses = [
+					new Response(200, [
+						'Content-Type' => 'application/json+oembed; charset=UTF-8',
+						'Content-Length' => mb_strlen($json),
+							], $json),
+				];
 				break;
 			case 'jpeg' :
-				$response = new Response(200, [
-					'Content-Type' => 'image/jpeg',
-					'Content-Length' => strlen($this->jpeg),
-						], $this->jpeg);
+				$jpg = $this->loadJPG();
+				$responses = [
+					new Response(200, [
+						'Content-Type' => 'image/jpeg',
+						'Content-Length' => mb_strlen($jpg),
+							], $jpg),
+				];
 				break;
 		}
-		
-		$handler = new MockHandler([$response]);
+
+		$handler = new MockHandler($responses);
 		$client = new Client(['handler' => $handler]);
 		return new Parser($client);
 	}
@@ -164,7 +212,7 @@ class ParserTest extends PHPUnit_Framework_TestCase {
 	 */
 	public function testRead() {
 		$this->assertEquals('', $this->mock()->read($this->url()));
-		$this->assertEquals($this->html, $this->mock('html')->read($this->url()));
+		$this->assertEquals($this->loadHTML(), $this->mock('html')->read($this->url()));
 	}
 
 	/**
@@ -227,7 +275,7 @@ class ParserTest extends PHPUnit_Framework_TestCase {
 	 */
 	public function testGetHTML() {
 		$this->assertEquals('', $this->mock()->getHTML($this->url()));
-		$this->assertEquals($this->html, $this->mock('html')->getHTML($this->url()));
+		$this->assertEquals($this->loadHTML(), $this->mock('html')->getHTML($this->url()));
 		$this->assertEquals('', $this->mock('xml')->getHTML($this->url()));
 		$this->assertEquals('', $this->mock('json')->getHTML($this->url()));
 	}
@@ -262,7 +310,7 @@ class ParserTest extends PHPUnit_Framework_TestCase {
 		$mock = $this->mock('html');
 		$doc = $mock->getDOM($base_url);
 		$meta = $mock->parseLinkTags($doc);
-
+		
 		$this->assertContains("{$this->url}path/to/icon.ico", $meta['icons']);
 		$this->assertContains("{$base_url}/path/to/icon2.ico", $meta['icons']);
 		$this->assertContains("http://examples.opengraphprotocol.us/video-array.xml", $meta['oembed_url']);

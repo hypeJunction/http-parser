@@ -555,16 +555,18 @@ class Parser {
 
 		$uri = trim($doc->documentURI ?: '', '/');
 
-		// Check if $url is relative to root
+		$scheme = parse_url($uri, PHP_URL_SCHEME);
+		$host = parse_url($uri, PHP_URL_HOST);
+
 		if (substr($href, 0, 1) === "/") {
-			$scheme = parse_url($uri, PHP_URL_SCHEME);
-			$host = parse_url($uri, PHP_URL_HOST);
+			// URL is relative to site root
 			return "$scheme://$host$href";
 		}
 
-		// $url is relative to page
-		$uri = pathinfo($uri, PATHINFO_DIRNAME);
-		return "$uri/$href";
+		// URL is relative to page
+		$path = parse_url($uri, PHP_URL_PATH);
+
+		return "$scheme://$host$path/$href";
 	}
 
 }
