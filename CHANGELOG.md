@@ -1,3 +1,15 @@
+<a name="0.1.0"></a>
+# [0.1.0](https://github.com/hypeJunction/http-parser/compare/0.0.2...v0.1.0) (2017-04-18)
+
+
+### Bug Fixes
+
+* **mb:** keep library agnostic to Elgg api ([3713aef](https://github.com/hypeJunction/http-parser/commit/3713aef))
+* **tests:** fix undefined index notices ([7dfb575](https://github.com/hypeJunction/http-parser/commit/7dfb575))
+* **tests:** fix URL normalization issue that caused tests to fail ([a107b22](https://github.com/hypeJunction/http-parser/commit/a107b22))
+
+
+
 <a name="0.0.2"></a>
 ## [0.0.2](https://github.com/hypeJunction/http-parser/compare/0.0.1...v0.0.2) (2017-02-18)
 
