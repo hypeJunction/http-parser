@@ -446,6 +446,10 @@ class Parser {
 				}
 
 				$name = strtolower($name);
+				
+				if ($name == 'og:image:url') {
+					$name = 'og:image';
+				}
 
 				$content = $node->getAttribute('content');
 				if (isset($meta['metatags'][$name])) {
