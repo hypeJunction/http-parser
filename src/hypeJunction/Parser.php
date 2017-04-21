@@ -447,7 +447,7 @@ class Parser {
 
 				$name = strtolower($name);
 				
-				if ($name == 'og:image:url') {
+				if ($name == 'og:image:url' || $name == 'og:image:secure_url') {
 					$name = 'og:image';
 				}
 
