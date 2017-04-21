@@ -1,3 +1,13 @@
+<a name="0.1.2"></a>
+## [0.1.2](https://github.com/hypeJunction/http-parser/compare/0.1.1...v0.1.2) (2017-04-21)
+
+
+### Bug Fixes
+
+* **og:** alias og:image:secure_url with og:image ([1edbbe7](https://github.com/hypeJunction/http-parser/commit/1edbbe7))
+
+
+
 <a name="0.1.1"></a>
 ## [0.1.1](https://github.com/hypeJunction/http-parser/compare/0.1.0...v0.1.1) (2017-04-21)
 
