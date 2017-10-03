@@ -21,6 +21,7 @@ class Parser {
 	 * @var array
 	 */
 	private static $cache;
+	private $urls = [];
 
 	/**
 	 * Constructor
@@ -46,6 +47,10 @@ class Parser {
 			$data = $this->getDOMData($url);
 			if (is_array($data) && !empty($data['oembed_url'])) {
 				foreach ($data['oembed_url'] as $oembed_url) {
+					if (in_array($oembed_url, $this->urls)) {
+						continue;
+					}
+					$this->urls[] = $oembed_url;
 					$oembed_data = $this->parse($oembed_url);
 					if (!empty($oembed_data) && is_array($oembed_data)) {
 						$oembed_data['oembed_url'] = $oembed_data['url'];
