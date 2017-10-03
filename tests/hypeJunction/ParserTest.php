@@ -341,4 +341,33 @@ class ParserTest extends PHPUnit_Framework_TestCase {
 		$this->assertContains("http://examples.opengraphprotocol.us/media/images/50.png", $meta['thumbnails']);
 	}
 
+	public function testExitOnRecursiveAlternateLinking() {
+
+		$mock = $this->getMockBuilder(Parser::class)
+			->setMethods(['getDOMData', 'getImageData', 'getOEmbedData'])
+			->disableOriginalConstructor()
+			->getMock();
+
+		$expected = [
+			'oembed_url' => [
+				$this->url
+			],
+			'canonical' => [
+				$this->url,
+			],
+		];
+
+		$mock->method('getDOMData')
+			 ->willReturn($expected);
+
+		$mock->method('getImageData')
+			->willReturn(false);
+
+		$mock->method('getOEmbedData')
+			->willReturn(false);
+
+		$actual = $mock->parse('http://localhost/');
+
+		$this->assertEquals($expected, $actual);
+	}
 }

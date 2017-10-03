@@ -23,6 +23,11 @@ class Parser {
 	private static $cache;
 
 	/**
+	 * @var array
+	 */
+	private $urls = [];
+
+	/**
 	 * Constructor
 	 * @param ClientInterface $client HTTP Client
 	 */
@@ -37,7 +42,6 @@ class Parser {
 	 * @return array
 	 */
 	public function parse($url = '') {
-
 		$data = $this->getImageData($url);
 		if (!$data) {
 			$data = $this->getOEmbedData($url);
@@ -46,7 +50,7 @@ class Parser {
 			$data = $this->getDOMData($url);
 			if (is_array($data) && !empty($data['oembed_url'])) {
 				foreach ($data['oembed_url'] as $oembed_url) {
-					$oembed_data = $this->parse($oembed_url);
+					$oembed_data = $this->getOEmbedData($oembed_url);
 					if (!empty($oembed_data) && is_array($oembed_data)) {
 						$oembed_data['oembed_url'] = $oembed_data['url'];
 						unset($oembed_data['url']);
@@ -188,7 +192,7 @@ class Parser {
 
 	/**
 	 * Validate URL
-	 * 
+	 *
 	 * @param string $url URL to validate
 	 * @return bool
 	 */
@@ -347,9 +351,9 @@ class Parser {
 			return false;
 		}
 		$doc = new DOMDocument();
-		
+
 		libxml_use_internal_errors(true);
-		
+
 		if (is_callable('mb_convert_encoding')) {
 			$doc->loadHTML(mb_convert_encoding($html, 'HTML-ENTITIES', 'UTF-8'));
 		} else {
@@ -358,9 +362,9 @@ class Parser {
 		if (!$doc->documentURI) {
 			$doc->documentURI = $url;
 		}
-		
+
 		libxml_clear_errors();
-		
+
 		return $doc;
 	}
 
@@ -410,11 +414,11 @@ class Parser {
 				case 'alternate' :
 					$type = $node->getAttribute('type');
 					if (in_array($type, array(
-								'application/json+oembed',
-								'text/json+oembed',
-								'application/xml+oembed',
-								'text/xml+oembed'
-							))) {
+						'application/json+oembed',
+						'text/json+oembed',
+						'application/xml+oembed',
+						'text/xml+oembed'
+					))) {
 						$meta['oembed_url'][] = $this->getAbsoluteURL($doc, $href);
 					}
 					break;
@@ -446,7 +450,7 @@ class Parser {
 				}
 
 				$name = strtolower($name);
-				
+
 				if ($name == 'og:image:url' || $name == 'og:image:secure_url') {
 					$name = 'og:image';
 				}
