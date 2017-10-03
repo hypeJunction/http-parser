@@ -1,3 +1,13 @@
+<a name="0.1.3"></a>
+## [0.1.3](https://github.com/hypeJunction/http-parser/compare/0.1.2...v0.1.3) (2017-10-03)
+
+
+### Bug Fixes
+
+* **parse:** no longer recurses into alternate links avoid infinite loops ([507238a](https://github.com/hypeJunction/http-parser/commit/507238a))
+
+
+
 <a name="0.1.2"></a>
 ## [0.1.2](https://github.com/hypeJunction/http-parser/compare/0.1.1...v0.1.2) (2017-04-21)
 
