@@ -1,3 +1,39 @@
+<a name="0.2.0"></a>
+# [0.2.0](https://github.com/hypeJunction/http-parser/compare/0.1.3...v0.2.0) (2026-07-11)
+
+### ⚠ Breaking Changes
+
+* **php:** requires PHP 8.1+ and Guzzle 7; strict types and native type declarations throughout
+* **autoload:** switched from PSR-0 to PSR-4
+* **api:** `Parser::request()` returns `?ResponseInterface` instead of `Response|false`
+* **security:** requests to private/reserved/loopback/link-local/CGNAT hosts are now blocked by default; opt out with the `allow_private_hosts` option (e.g. for testing)
+* **urls:** relative URLs are now resolved per RFC 3986 (`../`, scheme-relative `//host`, query strings)
+
+### Security Fixes
+
+* **ssrf:** block non-http(s) schemes and private/reserved networks; re-validate every redirect target before following it
+* **dos:** cap response body reads at `max_body_length` (2 MB default)
+* **dos:** cap per-document `<img>` verification requests (`max_image_checks`) and oEmbed fetches (`max_oembed_fetches`)
+* **xxe:** parse oEmbed XML with `LIBXML_NONET`
+* **crash:** fix fatal `elgg_substr()` call on multibyte URLs
+* **crash:** fix null dereference in `parseTitle()` on pages without a `<title>`
+* **cache:** response cache is now per-instance and no longer static
+* **xss:** `getAbsoluteURL()` rejects `javascript:`, `data:` and other non-fetchable schemes
+* **docs:** usage example no longer disables TLS verification
+
+### Features
+
+* **jsonld:** extract JSON-LD (schema.org) structured data (`jsonld` key, plus title/description/image fallbacks)
+* **icons:** recognize `shortcut icon`, `apple-touch-icon` and `apple-touch-icon-precomposed` link relations
+* **meta:** recognize `twitter:image:src`; use `og:url` as canonical fallback
+* **logging:** optional PSR-3 logger replaces `error_log()`
+* **options:** configurable parser options (see README)
+
+### Build
+
+* **ci:** GitHub Actions (PHP 8.1–8.4 matrix, PHPStan, composer audit) replaces Scrutinizer
+* **build:** removed Grunt-based release tooling; added `LICENSE`, `SECURITY.md`, PHPStan config
+
 <a name="0.1.3"></a>
 ## [0.1.3](https://github.com/hypeJunction/http-parser/compare/0.1.2...v0.1.3) (2017-10-03)
 
