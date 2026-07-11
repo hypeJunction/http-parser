@@ -1,47 +1,79 @@
 <?php
 
+declare(strict_types=1);
+
 namespace hypeJunction;
 
 use DOMDocument;
-use Exception;
 use GuzzleHttp\ClientInterface;
-use GuzzleHttp\Psr7\Response;
+use GuzzleHttp\Psr7\Uri;
+use GuzzleHttp\Psr7\UriResolver;
+use GuzzleHttp\Psr7\Utils;
+use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\UriInterface;
+use Psr\Log\LoggerInterface;
+use Psr\Log\NullLogger;
+use Throwable;
 
 /**
- * Parses HTTP resource into a serialable array of metatags
+ * Parses an HTTP resource into a serializable array of metatags
+ * (oEmbed, OpenGraph, Twitter cards, JSON-LD, link/meta/img tags).
  */
 class Parser {
 
 	/**
-	 * @var ClientInterface
+	 * Default parser options
 	 */
-	private $client;
+	public const DEFAULT_OPTIONS = [
+		// Maximum number of bytes read from a response body (bodies are truncated beyond this)
+		'max_body_length' => 2097152, // 2 MB
+		// URL schemes the parser is allowed to fetch
+		'allowed_schemes' => ['http', 'https'],
+		// Allow requests to private/reserved IP ranges and single-label hosts (enable for testing only)
+		'allow_private_hosts' => false,
+		// Maximum number of <img> tags validated with an HTTP request per document
+		'max_image_checks' => 10,
+		// Maximum number of discovered oEmbed endpoints to fetch per document
+		'max_oembed_fetches' => 3,
+		// Maximum number of redirects to follow (each redirect target is re-validated)
+		'max_redirects' => 5,
+		// Extra Guzzle request options merged into every request
+		'request_options' => [],
+	];
+
+	private ClientInterface $client;
+
+	private LoggerInterface $logger;
 
 	/**
-	 * @var array
+	 * @var array<string, mixed>
 	 */
-	private static $cache;
+	private array $options = self::DEFAULT_OPTIONS;
 
 	/**
-	 * @var array
+	 * Per-instance response cache
+	 *
+	 * @var array<string, ResponseInterface|null>
 	 */
-	private $urls = [];
+	private array $cache = [];
 
 	/**
-	 * Constructor
-	 * @param ClientInterface $client HTTP Client
+	 * @param ClientInterface      $client  HTTP client
+	 * @param array<string, mixed> $options Parser options (see self::DEFAULT_OPTIONS)
+	 * @param LoggerInterface|null $logger  PSR-3 logger
 	 */
-	public function __construct(ClientInterface $client) {
+	public function __construct(ClientInterface $client, array $options = [], ?LoggerInterface $logger = null) {
 		$this->client = $client;
+		$this->options = array_merge(self::DEFAULT_OPTIONS, $options);
+		$this->logger = $logger ?? new NullLogger();
 	}
 
 	/**
-	 * Parses a URL into a an array of metatags
+	 * Parses a URL into an array of metatags
 	 *
-	 * @param string $url URL to parse
-	 * @return array
+	 * @return array<string, mixed>
 	 */
-	public function parse($url = '') {
+	public function parse(string $url = ''): array {
 		$data = $this->getImageData($url);
 		if (!$data) {
 			$data = $this->getOEmbedData($url);
@@ -49,9 +81,10 @@ class Parser {
 		if (!$data) {
 			$data = $this->getDOMData($url);
 			if (is_array($data) && !empty($data['oembed_url'])) {
-				foreach ($data['oembed_url'] as $oembed_url) {
-					$oembed_data = $this->getOEmbedData($oembed_url);
-					if (!empty($oembed_data) && is_array($oembed_data)) {
+				$oembed_urls = array_slice((array) $data['oembed_url'], 0, (int) $this->options['max_oembed_fetches']);
+				foreach ($oembed_urls as $oembed_url) {
+					$oembed_data = $this->getOEmbedData((string) $oembed_url);
+					if (!empty($oembed_data)) {
 						$oembed_data['oembed_url'] = $oembed_data['url'];
 						unset($oembed_data['url']);
 						$data = array_merge($data, $oembed_data);
@@ -61,7 +94,7 @@ class Parser {
 		}
 
 		if (!is_array($data)) {
-			$data = array();
+			$data = [];
 		}
 
 		if (empty($data['thumbnail_url']) && !empty($data['thumbnails'])) {
@@ -74,50 +107,54 @@ class Parser {
 	/**
 	 * Parses image metatags
 	 *
-	 * @param string $url URL of the image
-	 * @return array|false
+	 * @return array<string, mixed>|false
 	 */
-	public function getImageData($url = '') {
+	public function getImageData(string $url = '') {
 		if (!$this->isImage($url)) {
 			return false;
 		}
 
-		return array(
+		return [
 			'type' => 'photo',
 			'url' => $url,
-			'thumbnails' => array($url),
-		);
+			'thumbnails' => [$url],
+		];
 	}
 
 	/**
-	 * Parses OEmbed data
+	 * Parses oEmbed data
 	 *
-	 * @param  string $url URL of the image
-	 * @return array|false
+	 * @return array<string, mixed>|false
 	 */
-	public function getOEmbedData($url = '') {
-
+	public function getOEmbedData(string $url = '') {
 		if (!$this->isJSON($url) && !$this->isXML($url)) {
 			return false;
 		}
 
-		$meta = array(
+		$meta = [
 			'url' => $url,
-		);
+		];
 
 		$content = $this->read($url);
 		if (!$content) {
 			return $meta;
 		}
 
-		$data = new \stdClass();
+		$data = null;
 		if ($this->isJSON($url)) {
 			$data = json_decode($content);
 		} else if ($this->isXML($url)) {
-			$data = simplexml_load_string($content);
+			$prev = libxml_use_internal_errors(true);
+			$data = simplexml_load_string($content, \SimpleXMLElement::class, LIBXML_NONET | LIBXML_NOCDATA);
+			libxml_clear_errors();
+			libxml_use_internal_errors($prev);
 		}
 
-		$props = array(
+		if (!is_object($data)) {
+			return $meta;
+		}
+
+		$props = [
 			'type',
 			'version',
 			'title',
@@ -132,23 +169,22 @@ class Parser {
 			'width',
 			'height',
 			'html',
-		);
+		];
 		foreach ($props as $key) {
 			if (!empty($data->$key)) {
 				$meta[$key] = (string) $data->$key;
 			}
 		}
+
 		return $meta;
 	}
 
 	/**
 	 * Parses metatags from DOM
 	 *
-	 * @param  string $url URL
-	 * @return array|false
+	 * @return array<string, mixed>|false
 	 */
-	public function getDOMData($url = '') {
-
+	public function getDOMData(string $url = '') {
 		if (!$this->isHTML($url)) {
 			return false;
 		}
@@ -158,151 +194,295 @@ class Parser {
 			return false;
 		}
 
-		$defaults = array(
+		$meta = [
 			'url' => $url,
-		);
+		];
 
-		$link_tags = $this->parseLinkTags($doc);
-		$meta_tags = $this->parseMetaTags($doc);
-		$img_tags = $this->parseImgTags($doc);
+		$parts = [
+			$this->parseLinkTags($doc),
+			$this->parseMetaTags($doc),
+			$this->parseJsonLd($doc),
+			$this->parseImgTags($doc),
+		];
 
-		$meta = array_merge_recursive($defaults, $link_tags, $meta_tags, $img_tags);
+		// list keys are concatenated, scalar keys are first-wins
+		$list_keys = ['icons', 'thumbnails', 'oembed_url', 'jsonld'];
+		foreach ($parts as $part) {
+			foreach ($part as $key => $value) {
+				if (in_array($key, $list_keys, true)) {
+					$merged = array_merge($meta[$key] ?? [], (array) $value);
+					// jsonld holds nested arrays, which array_unique() cannot compare
+					$meta[$key] = ($key === 'jsonld') ? $merged : array_values(array_unique($merged));
+				} else if (!isset($meta[$key]) || $meta[$key] === '' || $meta[$key] === []) {
+					$meta[$key] = $value;
+				}
+			}
+		}
 
 		if (empty($meta['title'])) {
 			$meta['title'] = $this->parseTitle($doc);
 		}
 
-
 		return $meta;
 	}
 
 	/**
-	 * Check if URL exists and is reachable by making an HTTP request to retrieve header information
-	 *
-	 * @param string $url URL of the resource
-	 * @return boolean
+	 * Check if URL exists and is reachable by making an HTTP request
 	 */
-	public function exists($url = '') {
+	public function exists(string $url = ''): bool {
 		$response = $this->request($url);
-		if ($response instanceof Response) {
-			return $response->getStatusCode() == 200;
-		}
-		return false;
+
+		return $response instanceof ResponseInterface && $response->getStatusCode() === 200;
 	}
 
 	/**
 	 * Validate URL
 	 *
-	 * @param string $url URL to validate
-	 * @return bool
+	 * @return string|false Normalized URL or false
 	 */
-	public function isValidUrl($url = '') {
+	public function isValidUrl(string $url = '') {
 		// based on http://php.net/manual/en/function.filter-var.php#104160
-		// adapted by @mrclay in https://github.com/mrclay/Elgg-leaf/blob/62bf31c0ccdaab549a7e585a4412443e09821db3/engine/lib/output.php
 		$res = filter_var($url, FILTER_VALIDATE_URL);
 		if ($res) {
 			return $res;
 		}
-		// Check if it has unicode chars.
+
+		// Check if it has unicode chars
 		$l = mb_strlen($url);
-		if (strlen($url) == $l) {
-			return $res;
+		if (strlen($url) === $l) {
+			return false;
 		}
-		// Replace wide chars by “X”.
+
+		// Replace wide chars by "X"
 		$s = '';
 		for ($i = 0; $i < $l; ++$i) {
-			$ch = elgg_substr($url, $i, 1);
+			$ch = mb_substr($url, $i, 1);
 			$s .= (strlen($ch) > 1) ? 'X' : $ch;
 		}
-		// Re-check now.
+
+		// Re-check now
 		return filter_var($s, FILTER_VALIDATE_URL) ? $url : false;
 	}
 
 	/**
-	 * Returns head of the resource
-	 *
-	 * @param string $url URL of the resource
-	 * @return Response|false
+	 * Checks that the URL uses an allowed scheme and does not point at a
+	 * private/reserved network (SSRF guard)
 	 */
-	public function request($url = '') {
-		$url = str_replace(' ', '%20', $url);
-		if (!$this->isValidUrl($url)) {
+	public function isSafeUrl(string $url): bool {
+		$parts = parse_url($url);
+		if (!is_array($parts)) {
 			return false;
 		}
-		if (!isset(self::$cache[$url])) {
-			try {
-				$response = $this->client->request('GET', $url);
-			} catch (Exception $e) {
-				$response = false;
-				error_log("Parser Error for HEAD request ($url): {$e->getMessage()}");
-			}
-			self::$cache[$url] = $response;
+
+		$scheme = strtolower($parts['scheme'] ?? '');
+		if (!in_array($scheme, (array) $this->options['allowed_schemes'], true)) {
+			return false;
 		}
 
-		return self::$cache[$url];
+		$host = $parts['host'] ?? '';
+		if ($host === '') {
+			return false;
+		}
+
+		if (!empty($this->options['allow_private_hosts'])) {
+			return true;
+		}
+
+		return $this->isPublicHost($host);
+	}
+
+	/**
+	 * Checks that a host name or IP literal resolves exclusively to public addresses
+	 */
+	protected function isPublicHost(string $host): bool {
+		$host = strtolower(trim($host, '[]'));
+
+		if (filter_var($host, FILTER_VALIDATE_IP)) {
+			return $this->isPublicIp($host);
+		}
+
+		if ($host === 'localhost' || str_ends_with($host, '.localhost') || str_ends_with($host, '.local') || !str_contains($host, '.')) {
+			return false;
+		}
+
+		$ips = [];
+		$a = @gethostbynamel($host);
+		if (is_array($a)) {
+			$ips = $a;
+		}
+		$aaaa = @dns_get_record($host, DNS_AAAA);
+		if (is_array($aaaa)) {
+			foreach ($aaaa as $record) {
+				if (!empty($record['ipv6'])) {
+					$ips[] = $record['ipv6'];
+				}
+			}
+		}
+
+		if (empty($ips)) {
+			return false;
+		}
+
+		foreach ($ips as $ip) {
+			if (!$this->isPublicIp($ip)) {
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	/**
+	 * Checks that an IP address is not private, reserved, loopback, link-local or CGNAT
+	 */
+	protected function isPublicIp(string $ip): bool {
+		if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false) {
+			return false;
+		}
+
+		if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+			$long = ip2long($ip);
+			$blocked = [
+				['0.0.0.0', 8],       // "this" network
+				['100.64.0.0', 10],   // CGNAT
+				['169.254.0.0', 16],  // link-local
+				['192.0.0.0', 24],    // IETF protocol assignments
+				['198.18.0.0', 15],   // benchmarking
+			];
+			foreach ($blocked as [$network, $bits]) {
+				$mask = -1 << (32 - $bits);
+				if (($long & $mask) === (ip2long($network) & $mask)) {
+					return false;
+				}
+			}
+		}
+
+		return true;
+	}
+
+	/**
+	 * Fetches the resource (with response caching)
+	 */
+	public function request(string $url = ''): ?ResponseInterface {
+		$url = str_replace(' ', '%20', $url);
+		if (!$this->isValidUrl($url) || !$this->isSafeUrl($url)) {
+			return null;
+		}
+
+		if (!array_key_exists($url, $this->cache)) {
+			try {
+				$response = $this->client->request('GET', $url, $this->buildRequestOptions());
+				$response = $this->truncateBody($response);
+			} catch (Throwable $e) {
+				$response = null;
+				$this->logger->notice('Parser error for GET request ({url}): {message}', [
+					'url' => $url,
+					'message' => $e->getMessage(),
+				]);
+			}
+			$this->cache[$url] = $response;
+		}
+
+		return $this->cache[$url];
+	}
+
+	/**
+	 * Builds per-request Guzzle options, re-validating every redirect target
+	 *
+	 * @return array<string, mixed>
+	 */
+	protected function buildRequestOptions(): array {
+		$options = [
+			'stream' => true,
+			'allow_redirects' => [
+				'max' => (int) $this->options['max_redirects'],
+				'strict' => true,
+				'referer' => true,
+				'protocols' => (array) $this->options['allowed_schemes'],
+				'on_redirect' => function ($request, $response, UriInterface $uri): void {
+					if (!$this->isSafeUrl((string) $uri)) {
+						throw new \RuntimeException("Redirect to unsafe URL blocked: $uri");
+					}
+				},
+			],
+		];
+
+		return array_replace_recursive($options, (array) $this->options['request_options']);
+	}
+
+	/**
+	 * Reads at most max_body_length bytes of the response body
+	 */
+	protected function truncateBody(ResponseInterface $response): ResponseInterface {
+		$max = (int) $this->options['max_body_length'];
+		$body = $response->getBody();
+
+		$data = '';
+		while (!$body->eof() && strlen($data) <= $max) {
+			$chunk = $body->read(65536);
+			if ($chunk === '') {
+				break;
+			}
+			$data .= $chunk;
+		}
+		$body->close();
+
+		if (strlen($data) > $max) {
+			$data = substr($data, 0, $max);
+		}
+
+		return $response->withBody(Utils::streamFor($data));
 	}
 
 	/**
 	 * Get contents of the page
-	 *
-	 * @param string $url URL of the resource
-	 * @return string
 	 */
-	public function read($url = '') {
-		$body = '';
+	public function read(string $url = ''): string {
 		if (!$this->exists($url)) {
-			return $body;
+			return '';
 		}
 
 		$response = $this->request($url);
-		$body = (string) $response->getBody();
-		return $body;
+
+		return (string) $response->getBody();
 	}
 
 	/**
 	 * Checks if resource is an html page
-	 *
-	 * @param string $url URL of the resource
-	 * @return boolean
 	 */
-	public function isHTML($url = '') {
+	public function isHTML(string $url = ''): bool {
 		$mime = $this->getContentType($url);
+
 		return strpos($mime, 'text/html') !== false;
 	}
 
 	/**
 	 * Checks if resource is JSON
-	 *
-	 * @param string $url URL of the resource
-	 * @return boolean
 	 */
-	public function isJSON($url = '') {
+	public function isJSON(string $url = ''): bool {
 		$mime = $this->getContentType($url);
+
 		return strpos($mime, 'json') !== false;
 	}
 
 	/**
 	 * Checks if resource is XML
-	 *
-	 * @param string $url URL of the resource
-	 * @return boolean
 	 */
-	public function isXML($url = '') {
+	public function isXML(string $url = ''): bool {
 		$mime = $this->getContentType($url);
+
 		return strpos($mime, 'xml') !== false;
 	}
 
 	/**
 	 * Checks if resource is an image
-	 *
-	 * @param string $url URL of the resource
-	 * @return boolean
 	 */
-	public function isImage($url = '') {
+	public function isImage(string $url = ''): bool {
 		$mime = $this->getContentType($url);
 		if ($mime) {
 			list($simple, ) = explode('/', $mime);
-			return ($simple == 'image');
+
+			return $simple === 'image';
 		}
 
 		return false;
@@ -310,116 +490,118 @@ class Parser {
 
 	/**
 	 * Get mime type of the URL content
-	 *
-	 * @param string $url URL of the resource
-	 * @return string
 	 */
-	public function getContentType($url = '') {
+	public function getContentType(string $url = ''): string {
 		$response = $this->request($url);
-		if ($response instanceof Response) {
+		if ($response instanceof ResponseInterface) {
 			$header = $response->getHeader('Content-Type');
-			if (is_array($header) && !empty($header)) {
+			if (!empty($header)) {
 				$parts = explode(';', $header[0]);
+
 				return trim($parts[0]);
 			}
 		}
+
 		return '';
 	}
 
 	/**
 	 * Returns HTML contents of the page
-	 *
-	 * @param string $url URL of the resource
-	 * @return string
 	 */
-	public function getHTML($url = '') {
+	public function getHTML(string $url = ''): string {
 		if (!$this->isHTML($url)) {
 			return '';
 		}
+
 		return $this->read($url);
 	}
 
 	/**
 	 * Returns HTML contents of the page as a DOMDocument
 	 *
-	 * @param string $url URL of the resource
 	 * @return DOMDocument|false
 	 */
-	public function getDOM($url = '') {
+	public function getDOM(string $url = '') {
 		$html = $this->getHTML($url);
 		if (empty($html)) {
 			return false;
 		}
+
 		$doc = new DOMDocument();
 
-		libxml_use_internal_errors(true);
+		$prev = libxml_use_internal_errors(true);
 
-		if (is_callable('mb_convert_encoding')) {
-			$doc->loadHTML(mb_convert_encoding($html, 'HTML-ENTITIES', 'UTF-8'));
-		} else {
-			$doc->loadHTML($html);
+		if (function_exists('mb_encode_numericentity')) {
+			$html = mb_encode_numericentity($html, [0x80, 0x10FFFF, 0, 0x1FFFFF], 'UTF-8');
 		}
+		$doc->loadHTML($html, LIBXML_NONET);
+
 		if (!$doc->documentURI) {
 			$doc->documentURI = $url;
 		}
 
 		libxml_clear_errors();
+		libxml_use_internal_errors($prev);
 
 		return $doc;
 	}
 
 	/**
 	 * Parses document title
-	 *
-	 * @param DOMDocument $doc Document
-	 * @return string
 	 */
-	public function parseTitle(DOMDocument $doc) {
-		$node = $doc->getElementsByTagName('title');
-		$title = $node->item(0)->nodeValue;
-		return ($title) ?: '';
+	public function parseTitle(DOMDocument $doc): string {
+		$node = $doc->getElementsByTagName('title')->item(0);
+
+		return $node ? trim($node->textContent) : '';
 	}
 
 	/**
 	 * Parses <link> tags
 	 *
-	 * @param DOMDocument $doc Document
-	 * @return array
+	 * @return array<string, mixed>
 	 */
-	public function parseLinkTags(DOMDocument $doc) {
-
-		$meta = array(
+	public function parseLinkTags(DOMDocument $doc): array {
+		$meta = [
 			'icons' => [],
 			'thumbnails' => [],
-		);
+		];
 
 		$nodes = $doc->getElementsByTagName('link');
 		foreach ($nodes as $node) {
-			$rel = $node->getAttribute('rel');
+			$rel = strtolower($node->getAttribute('rel'));
 			$href = $node->getAttribute('href');
 
 			switch ($rel) {
 
 				case 'icon' :
+				case 'shortcut icon' :
+				case 'apple-touch-icon' :
+				case 'apple-touch-icon-precomposed' :
 					$image_url = $this->getAbsoluteURL($doc, $href);
-					if ($this->isImage($image_url)) {
+					if ($image_url && $this->isImage($image_url)) {
 						$meta['icons'][] = $image_url;
 					}
 					break;
 
 				case 'canonical' :
-					$meta['canonical'] = $this->getAbsoluteURL($doc, $href);
+					$canonical = $this->getAbsoluteURL($doc, $href);
+					if ($canonical) {
+						$meta['canonical'] = $canonical;
+					}
 					break;
 
 				case 'alternate' :
 					$type = $node->getAttribute('type');
-					if (in_array($type, array(
+					if (in_array($type, [
 						'application/json+oembed',
 						'text/json+oembed',
 						'application/xml+oembed',
-						'text/xml+oembed'
-					))) {
-						$meta['oembed_url'][] = $this->getAbsoluteURL($doc, $href);
+						'text/xml+oembed',
+					], true)) {
+						$oembed_url = $this->getAbsoluteURL($doc, $href);
+						if ($oembed_url) {
+							$meta['oembed_url'][] = $oembed_url;
+						}
 					}
 					break;
 			}
@@ -431,86 +613,149 @@ class Parser {
 	/**
 	 * Parses <meta> tags
 	 *
-	 * @param DOMDocument $doc Document
-	 * @return array
+	 * @return array<string, mixed>
 	 */
-	public function parseMetaTags(DOMDocument $doc) {
-
-		$meta = array();
+	public function parseMetaTags(DOMDocument $doc): array {
+		$meta = [];
 
 		$nodes = $doc->getElementsByTagName('meta');
-		if (!empty($nodes)) {
-			foreach ($nodes as $node) {
-				$name = $node->getAttribute('name');
-				if (!$name) {
-					$name = $node->getAttribute('property');
+		foreach ($nodes as $node) {
+			$name = $node->getAttribute('name');
+			if (!$name) {
+				$name = $node->getAttribute('property');
+			}
+			if (!$name) {
+				continue;
+			}
+
+			$name = strtolower($name);
+
+			if ($name === 'og:image:url' || $name === 'og:image:secure_url') {
+				$name = 'og:image';
+			}
+
+			$content = $node->getAttribute('content');
+			if (isset($meta['metatags'][$name])) {
+				if (!is_array($meta['metatags'][$name])) {
+					$meta['metatags'][$name] = [$meta['metatags'][$name]];
 				}
-				if (!$name) {
+				$meta['metatags'][$name][] = $content;
+			} else {
+				$meta['metatags'][$name] = $content;
+			}
+
+			switch ($name) {
+
+				case 'title' :
+				case 'og:title' :
+				case 'twitter:title' :
+					if (empty($meta['title'])) {
+						$meta['title'] = $content;
+					}
+					break;
+
+				case 'og:type' :
+					if (empty($meta['type'])) {
+						$meta['type'] = $content;
+					}
+					break;
+
+				case 'description' :
+				case 'og:description' :
+				case 'twitter:description' :
+					if (empty($meta['description'])) {
+						$meta['description'] = $content;
+					}
+					break;
+
+				case 'keywords' :
+					$meta['tags'] = array_map('trim', explode(',', $content));
+					break;
+
+				case 'og:site_name' :
+				case 'twitter:site' :
+					if (empty($meta['provider_name'])) {
+						$meta['provider_name'] = $content;
+					}
+					break;
+
+				case 'og:url' :
+					if (empty($meta['canonical'])) {
+						$canonical = $this->getAbsoluteURL($doc, $content);
+						if ($canonical) {
+							$meta['canonical'] = $canonical;
+						}
+					}
+					break;
+
+				case 'og:image' :
+				case 'twitter:image' :
+				case 'twitter:image:src' :
+					$image_url = $this->getAbsoluteURL($doc, $content);
+					if ($image_url && $this->isImage($image_url)) {
+						$meta['thumbnails'][] = $image_url;
+					}
+					break;
+			}
+		}
+
+		return $meta;
+	}
+
+	/**
+	 * Parses JSON-LD (schema.org) structured data
+	 *
+	 * @return array<string, mixed>
+	 */
+	public function parseJsonLd(DOMDocument $doc): array {
+		$meta = [];
+
+		$nodes = $doc->getElementsByTagName('script');
+		foreach ($nodes as $node) {
+			if (strtolower($node->getAttribute('type')) !== 'application/ld+json') {
+				continue;
+			}
+
+			$data = json_decode($node->textContent, true);
+			if (!is_array($data)) {
+				continue;
+			}
+
+			// unwrap @graph and single-item arrays
+			if (isset($data['@graph']) && is_array($data['@graph'])) {
+				$data = $data['@graph'];
+			}
+			$items = array_is_list($data) ? $data : [$data];
+
+			foreach ($items as $item) {
+				if (!is_array($item)) {
 					continue;
 				}
 
-				$name = strtolower($name);
+				$meta['jsonld'][] = $item;
 
-				if ($name == 'og:image:url' || $name == 'og:image:secure_url') {
-					$name = 'og:image';
+				if (empty($meta['title']) && !empty($item['headline']) && is_string($item['headline'])) {
+					$meta['title'] = $item['headline'];
+				} else if (empty($meta['title']) && !empty($item['name']) && is_string($item['name'])) {
+					$meta['title'] = $item['name'];
 				}
 
-				$content = $node->getAttribute('content');
-				if (isset($meta['metatags'][$name])) {
-					if (!is_array($meta['metatags'][$name])) {
-						$meta['metatags'][$name] = array($meta['metatags'][$name]);
+				if (empty($meta['description']) && !empty($item['description']) && is_string($item['description'])) {
+					$meta['description'] = $item['description'];
+				}
+
+				$image = $item['image'] ?? null;
+				if (is_array($image)) {
+					$image = $image['url'] ?? ($image[0] ?? null);
+					if (is_array($image)) {
+						$image = $image['url'] ?? null;
 					}
-					$meta['metatags'][$name][] = $content;
-				} else {
-					$meta['metatags'][$name] = $content;
 				}
-
-				switch ($name) {
-
-					case 'title' :
-					case 'og:title' :
-					case 'twitter:title' :
-						if (empty($meta['title'])) {
-							$meta['title'] = $content;
-						}
-						break;
-
-					case 'og:type' :
-						if (empty($meta['type'])) {
-							$meta['type'] = $content;
-						}
-						break;
-
-					case 'description' :
-					case 'og:description' :
-					case 'twitter:description' :
-						if (empty($meta['description'])) {
-							$meta['description'] = $content;
-						}
-						break;
-
-					case 'keywords' :
-						if (is_string($content)) {
-							$content = explode(',', $content);
-							$content = array_map('trim', $content);
-						}
-						$meta['tags'] = $content;
-						break;
-
-					case 'og:site_name' :
-					case 'twitter:site' :
-						if (empty($meta['provider_name'])) {
-							$meta['provider_name'] = $content;
-						}
-						break;
-
-					case 'og:image' :
-					case 'twitter:image' :
-						$image_url = $this->getAbsoluteURL($doc, $content);
-						if ($this->isImage($image_url)) {
-							$meta['thumbnails'][] = $image_url;
-						}
-						break;
+				if (is_string($image) && $image !== '') {
+					$image_url = $this->getAbsoluteURL($doc, $image);
+					if ($image_url && $this->isImage($image_url)) {
+						$meta['thumbnails'][] = $image_url;
+					}
 				}
 			}
 		}
@@ -521,19 +766,27 @@ class Parser {
 	/**
 	 * Parses <img> tags
 	 *
-	 * @param DOMDocument $doc Document
-	 * @return array
+	 * @return array<string, mixed>
 	 */
-	public function parseImgTags(DOMDocument $doc) {
-
-		$meta = array(
+	public function parseImgTags(DOMDocument $doc): array {
+		$meta = [
 			'thumbnails' => [],
-		);
+		];
+
+		$checks = 0;
+		$max_checks = (int) $this->options['max_image_checks'];
 
 		$nodes = $doc->getElementsByTagName('img');
 		foreach ($nodes as $node) {
+			if ($checks >= $max_checks) {
+				break;
+			}
 			$src = $node->getAttribute('src');
 			$image_url = $this->getAbsoluteURL($doc, $src);
+			if (!$image_url) {
+				continue;
+			}
+			$checks++;
 			if ($this->isImage($image_url)) {
 				$meta['thumbnails'][] = $image_url;
 			}
@@ -543,38 +796,34 @@ class Parser {
 	}
 
 	/**
-	 * Normalizes relative URLs
+	 * Resolves a (possibly relative) URL against the document URI (RFC 3986)
 	 *
-	 * @param DOMDocument $doc  Document
-	 * @param string      $href URL to normalize
 	 * @return string|false
 	 */
-	public function getAbsoluteURL(DOMDocument $doc, $href = '') {
-
-		if (preg_match("/^data:/i", $href)) {
-			// data URIs can not be resolved
+	public function getAbsoluteURL(DOMDocument $doc, string $href = '') {
+		$href = trim($href);
+		if ($href === '') {
 			return false;
 		}
 
-		// Check if $url is absolute
-		if (parse_url($href, PHP_URL_HOST)) {
-			return $href;
+		$scheme = strtolower((string) parse_url($href, PHP_URL_SCHEME));
+		if ($scheme !== '' && !in_array($scheme, (array) $this->options['allowed_schemes'], true)) {
+			// data:, javascript:, file: and other non-fetchable schemes
+			return false;
 		}
 
-		$uri = trim($doc->documentURI ?: '', '/');
-
-		$scheme = parse_url($uri, PHP_URL_SCHEME);
-		$host = parse_url($uri, PHP_URL_HOST);
-
-		if (substr($href, 0, 1) === "/") {
-			// URL is relative to site root
-			return "$scheme://$host$href";
+		try {
+			$base = new Uri($doc->documentURI ?: '');
+			$resolved = UriResolver::resolve($base, new Uri($href));
+		} catch (Throwable $e) {
+			return false;
 		}
 
-		// URL is relative to page
-		$path = parse_url($uri, PHP_URL_PATH);
+		if (!in_array(strtolower($resolved->getScheme()), (array) $this->options['allowed_schemes'], true) || $resolved->getHost() === '') {
+			return false;
+		}
 
-		return "$scheme://$host$path/$href";
+		return (string) $resolved;
 	}
 
 }

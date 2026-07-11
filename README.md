@@ -1,21 +1,86 @@
 HTTP Parser
 ===========
-[![Code Coverage](https://scrutinizer-ci.com/g/hypeJunction/http-parser/badges/coverage.png?b=master)](https://scrutinizer-ci.com/g/hypeJunction/http-parser/?branch=master)
-[![Scrutinizer Code Quality](https://scrutinizer-ci.com/g/hypeJunction/http-parser/badges/quality-score.png?b=master)](https://scrutinizer-ci.com/g/hypeJunction/http-parser/?branch=master)
-[![Build Status](https://scrutinizer-ci.com/g/hypeJunction/http-parser/badges/build.png?b=master)](https://scrutinizer-ci.com/g/hypeJunction/http-parser/build-status/master)
+[![CI](https://github.com/hypeJunction/http-parser/actions/workflows/ci.yml/badge.svg)](https://github.com/hypeJunction/http-parser/actions/workflows/ci.yml)
 
-Parses HTTP resources into serializable arrays of oEmbed-like metatags
+Parses HTTP resources into serializable arrays of oEmbed-like metatags.
 
 ## Features
 
  * Parses HTTP resources into oEmbed-like arrays of metatags
- * Handy for rendering URL cards
+ * Extracts OpenGraph, Twitter card, JSON-LD (schema.org), `<link>`, `<meta>` and `<img>` data
+ * Discovers and resolves oEmbed endpoints (JSON and XML)
+ * Handy for rendering URL cards / link previews
 
+## Requirements
+
+ * PHP 8.1+
+ * Guzzle 7
+
+## Installation
+
+```sh
+composer require hypejunction/http-parser
+```
+
+## Usage
+
+```php
+require __DIR__ . '/vendor/autoload.php';
+
+$client = new \GuzzleHttp\Client([
+	'headers' => [
+		'User-Agent' => 'MyApp LinkPreview/1.0 (+https://myapp.example)',
+	],
+	'timeout' => 5,
+	'connect_timeout' => 5,
+]);
+
+$parser = new \hypeJunction\Parser($client);
+
+$data = $parser->parse('https://example.com/some/page');
+```
+
+### Options
+
+```php
+$parser = new \hypeJunction\Parser($client, [
+	// Maximum number of bytes read from a response body (default: 2 MB)
+	'max_body_length' => 2097152,
+
+	// URL schemes the parser is allowed to fetch (default: http, https)
+	'allowed_schemes' => ['http', 'https'],
+
+	// Allow requests to private/reserved IP ranges (default: false — see SECURITY.md)
+	'allow_private_hosts' => false,
+
+	// Maximum number of <img> tags verified with an HTTP request per document (default: 10)
+	'max_image_checks' => 10,
+
+	// Maximum number of discovered oEmbed endpoints fetched per document (default: 3)
+	'max_oembed_fetches' => 3,
+
+	// Maximum number of redirects to follow; each target is re-validated (default: 5)
+	'max_redirects' => 5,
+
+	// Extra Guzzle request options merged into every request
+	'request_options' => [],
+], $logger); // optional PSR-3 logger
+```
 
 ## Security
 
- * Make sure to implement a domain whitelist, as this method is not entirely secure and prone to XSS
+Fetching user-supplied URLs is dangerous by nature. The parser blocks
+private/reserved networks, re-validates redirects, and caps response sizes by
+default, but you must still:
 
+ * **Escape everything you render.** All returned values are
+   attacker-controlled strings. Only render the oEmbed `html` field for an
+   explicit allowlist of trusted providers, ideally in a sandboxed iframe.
+ * **Keep TLS verification on.** Never pass `'verify' => false` to Guzzle.
+ * **Consider an egress proxy** or IP pinning at the HTTP-client layer if DNS
+   rebinding is in your threat model.
+
+See [SECURITY.md](SECURITY.md) for the full threat model.
 
 ## Sample Output
 
@@ -28,59 +93,18 @@ Parses HTTP resources into serializable arrays of oEmbed-like metatags
 		"https://a-v2.sndcdn.com/assets/images/sc-icons/favicon-2cadd14b.ico"
 	],
 	"metatags": {
-		"keywords": "record, sounds, share, sound, audio, tracks, music, soundcloud",
-		"referrer": "origin",
-		"google-site-verification": "dY0CigqM8Inubs_hgrYMwk-zGchKwrvJLcvI_G8631Q",
-		"viewport": "width=device-width,minimum-scale=1,maximum-scale=1,user-scalable=no",
-		"fb:app_id": "19507961798",
 		"og:site_name": "SoundCloud",
-		"twitter:app:name:iphone": [
-			"SoundCloud",
-			"SoundCloud"
-		],
-		"description": "Stream PHS014: Maksim Dark & Light Breath - Finger Pulse (Original Mix) by Phobos Records from desktop or your mobile device",
-		"twitter:title": "PHS014: Maksim Dark & Light Breath - Finger Pulse (Original Mix)",
-		"twitter:description": "Release Date: 01.02.2016\n PHS014: Maksim Dark & Light Breath \"BELRUS EP\".\npro.beatport.com/release/belrus-ep/1683847\n\nfacebook.com/phobosrecords",
-		"twitter:player": "https://w.soundcloud.com/player/?url=https%3A%2F%2Fapi.soundcloud.com%2Ftracks%2F244902712&auto_play=false&show_artwork=true&visual=true&origin=twitter",
-		"twitter:player:height": "400",
-		"twitter:player:width": "435",
-		"twitter:image:src": "https://i1.sndcdn.com/artworks-000145456354-01w756-t500x500.jpg",
-		"twitter:card": "audio",
-		"twitter:audio:artist_name": "Phobos Records",
-		"twitter:audio:source": "https://api-partners.soundcloud.com/twitter/tracks/soundcloud:sounds:244902712/vmap",
-		"twitter:app:url:googleplay": "soundcloud://sounds:244902712",
-		"al:ios:app_store_id": "336353151",
-		"al:android:package": "com.soundcloud.android",
 		"og:type": "soundcloud:sound",
 		"og:url": "https://soundcloud.com/phobosrecords/maksim-light-pulse",
-		"og:image:width": "500",
-		"al:web:should_fallback": "false",
-		"soundcloud:user": "https://soundcloud.com/phobosrecords",
-		"soundcloud:play_count": "611",
-		"soundcloud:comments_count": "11",
-		"soundcloud:like_count": "40",
-		"msapplication-tooltip": "Launch SoundCloud",
-		"msapplication-tileimage": "https://a-v2.sndcdn.com/assets/images/sc-icons/win8-2dc974a1.png",
-		"msapplication-tilecolor": "#ff5500",
-		"msapplication-starturl": "https://soundcloud.com"
+		"twitter:title": "PHS014: Maksim Dark & Light Breath - Finger Pulse (Original Mix)",
+		"twitter:card": "audio"
 	},
-	"tags": [
-		"record",
-		"sounds",
-		"share",
-		"sound",
-		"audio",
-		"tracks",
-		"music",
-		"soundcloud"
-	],
+	"tags": ["record", "sounds", "share", "sound", "audio", "tracks", "music", "soundcloud"],
 	"provider_name": "SoundCloud",
-	"description": "Stream PHS014: Maksim Dark & Light Breath - Finger Pulse (Original Mix) by Phobos Records from desktop or your mobile device",
+	"description": "Stream PHS014: Maksim Dark & Light Breath - Finger Pulse (Original Mix) by Phobos Records",
 	"title": "PHS014: Maksim Dark & Light Breath - Finger Pulse (Original Mix) by Phobos Records",
-	"resource_type": "soundcloud:sound",
 	"thumbnails": [
-		"https://i1.sndcdn.com/artworks-000145456354-01w756-t500x500.jpg",
-		"https://a-v2.sndcdn.com/assets/images/loader-dark-45940ae3.gif"
+		"https://i1.sndcdn.com/artworks-000145456354-01w756-t500x500.jpg"
 	],
 	"type": "rich",
 	"version": "1",
@@ -94,33 +118,10 @@ Parses HTTP resources into serializable arrays of oEmbed-like metatags
 }
 ```
 
+## Development
 
-## Usage
-
-```php
-// sample index.php
-require __DIR__ . '/vendor/autoload.php';
-
-$client = new \GuzzleHttp\Client([
-	'headers' => [
-		'User-Agent' => 'Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; rv:1.9.2.12) Gecko/20101026 Firefox/3.6.12',
-	],
-	'allow_redirects' => [
-		'max' => 3,
-		'strict' => true,
-		'referer' => true,
-		'protocols' => ['http', 'https']
-	],
-	'timeout' => 5,
-	'connect_timeout' => 5,
-	'verify' => false,
-]);
-$parser = new \hypeJunction\Parser($client);
-
-$url = $_GET['url'];
-
-header('Content-Type: application/json');
-
-echo json_encode($parser->parse($url));
-
+```sh
+composer install
+composer test      # PHPUnit
+composer analyse   # PHPStan
 ```
